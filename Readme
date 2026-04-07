@@ -1,0 +1,306 @@
+# 📋 Task Dashboard — React Native (Expo)
+
+Dashboard de tareas colaborativas con arquitectura **offline-first**, construido con Expo, WatermelonDB, Zustand y TypeScript estricto.
+
+---
+
+## 📱 Descripción
+
+App de gestión de tareas similar a Trello/Asana que permite:
+- Ver, filtrar y gestionar tareas con soporte completo **offline**
+- Adjuntar fotos a tareas usando la **cámara nativa** del dispositivo
+- Componente de avatar nativo implementado en **Kotlin**
+
+---
+
+## 🚀 Instalación y ejecución
+
+### Requisitos previos
+
+| Herramienta | Versión |
+|---|---|
+| Node.js | 18.x o superior |
+| npm | 9.x o superior |
+| Android Studio | Flamingo o superior |
+| JDK | 17 (incluido en Android Studio) |
+| Android SDK | API 36 |
+| NDK | 27.1.12297006 |
+
+### 1. Clonar e instalar dependencias
+
+```bash
+git clone https://github.com/tu-usuario/task-dashboard.git
+cd task-dashboard
+npm install --legacy-peer-deps
+```
+
+> ⚠️ Se usa `--legacy-peer-deps` porque `@nozbe/with-observables` tiene peer deps declaradas para React 16-18, aunque funciona correctamente con React 19.
+
+### 2. Configurar variables de entorno Android
+
+```bash
+# Windows
+JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+ANDROID_HOME=C:\Users\tu-usuario\AppData\Local\Android\Sdk
+```
+
+### 3. Generar proyecto nativo
+
+```bash
+npx expo prebuild
+```
+
+> ℹ️ Este paso genera la carpeta `android/` con toda la configuración nativa. Los módulos `CameraModule`, `AvatarViewManager` y el `FileProvider` ya están incluidos en el código fuente del repositorio y se integran automáticamente en este paso.
+
+### 4. Ejecutar en Android
+
+Con dispositivo físico conectado por USB (depuración USB activada):
+
+```bash
+npx expo run:android
+```
+
+> La primera compilación tarda 15-30 minutos dependiendo de la velocidad de internet, ya que descarga las dependencias nativas de Android (~500MB). Las compilaciones siguientes son de 2-3 minutos.
+
+---
+
+## ❓ ¿Por qué los módulos nativos se registran manualmente?
+
+### Módulos nativos (CameraModule y AvatarViewManager)
+
+React Native tiene **Autolinking** que detecta automáticamente módulos instalados via npm. Sin embargo, `CameraModule` y `AvatarViewManager` son módulos escritos manualmente en Kotlin — no provienen de npm, por lo que el autolinking no los conoce.
+
+Por eso están registrados explícitamente en `MainApplication.kt`:
+
+```kotlin
+packageList =
+  PackageList(this).packages.apply {
+    add(CameraPackage())      // Módulo nativo de cámara (no viene de npm)
+    add(AvatarViewPackage())  // Componente nativo AvatarView (no viene de npm)
+  }
+```
+
+**Quien clone el repositorio no necesita hacer nada** — este registro ya está en el código fuente.
+
+### FileProvider
+
+El `FileProvider` es un componente de seguridad de Android que permite compartir archivos entre aplicaciones. Es necesario porque:
+
+- La cámara nativa es una **app diferente** al sistema operativo
+- No puede acceder directamente al `filesDir` de la app por razones de seguridad
+- El `FileProvider` crea una URI temporal con permisos que la app de cámara puede usar para escribir la foto
+
+Sin el `FileProvider` en `AndroidManifest.xml`, Android lanza una excepción de seguridad al intentar abrir la cámara.
+
+**También está incluido en el repositorio** — no requiere configuración adicional al clonar.
+
+### Resumen de lo que hace el desarrollador al clonar
+
+| Paso | Descripción | Requerido |
+|---|---|---|
+| `npm install --legacy-peer-deps` | Instalar dependencias npm | ✅ Sí |
+| `npx expo prebuild` | Generar carpeta android/ con código nativo | ✅ Sí |
+| `npx expo run:android` | Compilar e instalar en dispositivo | ✅ Sí |
+| Registrar CameraPackage | Ya está en MainApplication.kt del repo | ❌ No |
+| Registrar AvatarViewPackage | Ya está en MainApplication.kt del repo | ❌ No |
+| Configurar FileProvider | Ya está en AndroidManifest.xml del repo | ❌ No |
+| Configurar file_paths.xml | Ya está en res/xml/ del repo | ❌ No |
+
+---
+
+## 🗂️ Estructura del proyecto
+
+```
+task-dashboard/
+├── App.tsx                              # Entry point con SplashScreen
+├── src/
+│   ├── types/index.ts                   # Tipos globales TypeScript
+│   ├── theme.ts                         # Colores y estilos centralizados
+│   ├── database/
+│   │   ├── index.ts                     # Inicialización WatermelonDB
+│   │   ├── schema/index.ts              # Schema de tablas SQLite
+│   │   └── models/Task.ts               # Modelo Task
+│   ├── services/
+│   │   ├── api.ts                       # Cliente HTTP dummyjson.com
+│   │   └── sync.ts                      # Lógica sincronización offline-first
+│   ├── store/
+│   │   └── taskStore.ts                 # Estado global con Zustand
+│   ├── hooks/
+│   │   ├── useTasks.ts                  # Observer reactivo WatermelonDB
+│   │   └── useCamera.ts                 # Hook cámara nativa
+│   ├── components/
+│   │   ├── TaskItem.tsx                 # Item de tarea con switch y foto
+│   │   ├── FilterTabs.tsx               # Filtros Todas/Pendientes/Completadas
+│   │   └── EmptyState.tsx               # Estado vacío contextual
+│   ├── screens/
+│   │   ├── SplashScreen.tsx             # Pantalla de bienvenida animada
+│   │   └── DashboardScreen.tsx          # Pantalla principal
+│   ├── navigation/index.tsx             # React Navigation stack
+│   └── native/
+│       └── AvatarView/index.tsx         # Bridge JS → nativo Kotlin
+├── android/
+│   └── app/src/main/java/com/wilmer2/TaskDashboard/
+│       ├── AvatarView.kt                # Vista nativa Android (Canvas)
+│       ├── AvatarViewManager.kt         # SimpleViewManager para RN
+│       ├── AvatarViewPackage.kt         # ReactPackage AvatarView
+│       ├── CameraModule.kt              # Módulo nativo cámara (Intent)
+│       ├── CameraPackage.kt             # ReactPackage Camera
+│       └── MainApplication.kt           # Registro de módulos nativos
+```
+
+---
+
+## 🏗️ Arquitectura Offline-First
+
+### ¿Por qué WatermelonDB?
+
+WatermelonDB fue elegido sobre Realm por tres razones:
+
+1. **Performance reactiva**: Usa SQLite con observable pattern (RxJS). La UI se actualiza automáticamente ante cualquier cambio en la BD sin necesidad de re-fetch manual.
+
+2. **Integración con React**: El patrón `observe()` encaja directamente con hooks. WatermelonDB actúa como fuente de verdad sin un store intermedio para datos locales.
+
+3. **Modo JSI nativo**: En builds de producción usa JSI (JavaScript Interface) para comunicación directa sin el bridge — significativamente más rápido que soluciones basadas en AsyncStorage.
+
+### Flujo de datos
+
+```
+┌─────────────────────────────────────┐
+│     API: dummyjson.com/todos        │
+└──────────────┬──────────────────────┘
+               │ fetchTodos() — solo en sync
+               ▼
+┌─────────────────────────────────────┐
+│      sync.ts (syncTasks)            │
+│  · Upsert diferencial               │
+│  · Preserva estado local offline    │
+└──────────────┬──────────────────────┘
+               │ database.write()
+               ▼
+┌─────────────────────────────────────┐
+│    WatermelonDB (SQLite local)      │
+│         tabla: tasks                │
+└──────────────┬──────────────────────┘
+               │ query.observe() RxJS
+               ▼
+┌─────────────────────────────────────┐
+│    useTasks hook                    │
+│  Filtra en memoria con useMemo      │
+│  (sin queries adicionales a SQLite) │
+└──────────────┬──────────────────────┘
+               ▼
+┌─────────────────────────────────────┐
+│   DashboardScreen + FlatList        │
+│  La UI NUNCA llama a la API directo │
+└─────────────────────────────────────┘
+```
+
+### Manejo de estado
+
+| Capa | Tecnología | Responsabilidad |
+|---|---|---|
+| Estado global UI | **Zustand** | filter, isSyncing, syncError, acciones |
+| Fuente de verdad local | **WatermelonDB** | Datos de tareas, persistencia SQLite |
+| Filtrado reactivo | **useMemo + RxJS** | Filtrado en memoria sin queries adicionales |
+| Estado optimista | **useState local** | Feedback inmediato en toggle y foto |
+
+### Modificaciones offline
+
+1. Usuario hace toggle → override optimista actualiza UI **instantáneamente**
+2. `toggleTaskCompleted()` escribe en SQLite local
+3. WatermelonDB notifica el observer → confirma el cambio en la lista
+4. No se necesita internet — funciona completamente offline
+
+---
+
+## 📷 Módulo Nativo de Cámara (CameraModule)
+
+Implementado como **Native Module Android** en Kotlin usando Intent del sistema:
+
+- Abre la cámara nativa via `MediaStore.ACTION_IMAGE_CAPTURE`
+- Maneja cancelación sin crashear (resuelve con `null`)
+- Solicita permiso `CAMERA` en runtime
+- Guarda foto en sandbox de la app: `filesDir/task_photos/`
+- Retorna a JS: `uri`, `fileName`, `width`, `height`, `size`
+
+---
+
+## 🎨 Componente Nativo AvatarView
+
+Implementado como **SimpleViewManager** en Kotlin:
+
+- Recibe prop `name` desde React Native
+- Extrae iniciales (ej: "Wilmer Samboni" → "WS")
+- Genera color determinístico via hash del nombre (mismo algoritmo en JS y Kotlin)
+- Renderiza círculo con Canvas nativo y texto centrado
+- Expuesto a JS via `requireNativeComponent('AvatarView')`
+- Fallback en JS para cuando el módulo nativo no está disponible
+
+---
+
+## 🤖 Uso de IA
+
+Este proyecto fue desarrollado con asistencia de **Claude (Anthropic)** como herramienta de IA generativa.
+
+### Herramientas utilizadas
+
+- **Claude Sonnet** (claude.ai) — arquitectura, generación de código, debugging y documentación
+
+### Para qué tareas se usó IA
+
+| Tarea | Uso de IA | Supervisión humana |
+|---|---|---|
+| Arquitectura offline-first | Diseño inicial de capas | Validación del flujo de sync |
+| Schema y modelos WatermelonDB | Generación de código base | Verificación de tipos y decorators |
+| Lógica sync upsert diferencial | Código inicial | Corrección para preservar estado local |
+| Zustand store con estado optimista | Generación completa | Ajuste de tipos TypeScript estricto |
+| Hook useTasks con RxJS | Generación + optimización | Verificación de cleanup del subscription |
+| CameraModule nativo (Kotlin) | Generación de código | Corrección APIs nueva arquitectura RN |
+| AvatarView nativo (Kotlin) | Generación completa | Verificación Canvas API y hash de color |
+| Fix compatibilidad expo-modules | Debugging iterativo | Identificación versiones compatibles |
+| Optimización FlatList | Sugerencia técnica | Ajuste de windowSize y maxToRenderPerBatch |
+| README | Generación del documento | Revisión y corrección de instrucciones |
+
+### Cómo la supervisión fue clave
+
+- **Sync upsert**: La IA generó "borrar todo y reinsertar", perdiendo el estado `completed` local. Se corrigió a upsert diferencial que preserva cambios offline.
+- **CameraModule Kotlin**: Las APIs de `currentActivity` y `startActivityForResult` son diferentes en la Nueva Arquitectura de React Native — requirió corrección manual.
+- **Compatibilidad de versiones**: El conflicto entre `expo-camera`, `expo-image-picker` y `expo-modules-core` requirió múltiples iteraciones. Se resolvió usando `CameraModule` nativo propio en lugar de depender de expo-camera.
+- **Estado optimista**: La IA propuso spread operator `{...task}` que rompía el tipo WatermelonDB `Task`. Se corrigió a un Map de overrides sin modificar el objeto original.
+- **FileProvider**: La IA explicó por qué es necesario y cómo configurarlo correctamente para compartir archivos entre la app y la cámara del sistema de forma segura.
+
+---
+
+## ✅ Checklist de requisitos
+
+### Arquitectura y Sincronización
+- [x] Sincronización inicial con `dummyjson.com/todos`
+- [x] Lectura exclusiva desde WatermelonDB local
+- [x] Toggle completed/pending funciona sin internet
+- [x] Pull-to-refresh sincroniza con la API
+
+### UI
+- [x] Lista de tareas desde BD local
+- [x] Filtros: Todas / Pendientes / Completadas
+- [x] Switch por tarea para cambiar estado
+- [x] Feedback visual inmediato (estado optimista)
+- [x] Splash screen animado
+
+### Senior: Componente Nativo AvatarView
+- [x] Implementado con SimpleViewManager en Kotlin
+- [x] Iniciales extraídas del nombre
+- [x] Color generado por hash del nombre
+- [x] Vista circular con Canvas nativo
+- [x] Fallback JS cuando nativo no disponible
+
+### Módulo Nativo Cámara
+- [x] CameraModule en Kotlin (Native Module)
+- [x] Abre cámara nativa via Intent Android
+- [x] Maneja cancelación sin crash
+- [x] Permisos runtime solicitados
+- [x] Foto guardada en sandbox de la app
+- [x] Retorna uri, fileName, width, height, size
+- [x] Miniatura visible en cada tarea
+- [x] Opción de reemplazar foto
+- [x] Persistencia en WatermelonDB (attachment_uri)
+- [x] UI se actualiza inmediatamente (estado optimista)
